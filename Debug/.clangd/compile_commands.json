@@ -1,0 +1,7 @@
+[
+   {
+      "directory" : "C:/Users/75401853/workspace_ccstheia/Projet_Robot_1/Debug",
+      "command"   : "clang++ -I\"C:/ti/ccs2020/ccs/ccs_base/msp430/include\" -I\"C:/Users/75401853/workspace_ccstheia/Projet_Robot_1\" -I\"C:/ti/ccs2020/ccs/tools/compiler/ti-cgt-msp430_21.6.1.LTS/include\" -D__MSP430G2553__ -xc",
+      "file"      : "C:/Users/75401853/workspace_ccstheia/Projet_Robot_1/main.c"
+   }
+]
