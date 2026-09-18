@@ -52,16 +52,71 @@
 
 #include <msp430.h>
 
-int main(void)
-{
-    volatile unsigned int i;
-    WDTCTL = WDTPW + WDTHOLD;                 // Stop watchdog timer
-    P1DIR |= 0x01;                            // Set P1.0 to output direction
+// Actif à 1
+// LED1: 1.6
 
-    while(1)
-    {
-        P1OUT ^= 0x01;                        // Toggle P1.0 using exclusive-OR
 
-        for (i=10000; i>0; i--);
-  }
+
+// #pragma vector=PORT1_VECTOR
+// __interrupt void port1_isr(void)
+// {
+//   if ((P1IFG & BIT3) == BIT3)
+//   { 
+//     if (TA0CCR0 == 62500){
+//       TA0CCR0 = 31250;
+//     }
+//     else{
+//       TA0CCR0 =62500;
+//     }
+//     __delay_cycles(50);
+//     P1IFG &= ~(BIT3);
+//   }
+// }
+
+
+int main(void) {
+  volatile unsigned int i;
+  WDTCTL = WDTPW + WDTHOLD; // Stop watchdog timer
+
+  BCSCTL1= CALBC1_1MHZ; //frequence d’horloge 1MHz
+  DCOCTL= CALDCO_1MHZ; // "
+
+  P2DIR |= (BIT1 | BIT5); // P2.5 en sortie
+  P2SEL &= ~(BIT1 | BIT5); // selection fonction TA1.2
+  P2SEL2 &= ~(BIT1 | BIT5); // selection fonction TA1.2
+  P2OUT |= (BIT5);
+  P2OUT &= ~(BIT1);
+
+  // opto gauche
+  P2DIR &= ~BIT0; // P2.5 en sortie
+  P2SEL |= BIT0; // selection fonction TA1.2
+  P2SEL2 &= ~BIT0; // selection fonction TA1.2
+
+  // opto droit
+  P2DIR &= ~BIT3; // P2.5 en sortie
+  P2SEL |= BIT3; // selection fonction TA1.2
+  P2SEL2 &= ~BIT3; // selection fonction TA1.
+
+  // moteur gauche
+  P2DIR |= BIT2; // P2.5 en sortie
+  P2SEL |= BIT2; // selection fonction TA1.2
+  P2SEL2 &= ~BIT2; // selection fonction TA1.2
+  
+  // moteur droit
+  P2DIR |= BIT4; // P2.5 en sortie
+  P2SEL |= BIT4; // selection fonction TA1.2
+  P2SEL2 &= ~BIT4; // selection fonction TA1.2
+
+  //CONFIG TIMER TA1
+  TA1CTL = 0 |TASSEL_2 | MC_1 | ID_3 | TACLR; // source SMCLK pour TimerA , mode comptage Up
+  TA1CCTL2 |= OUTMOD_7; // activation mode de sortie n°7
+  TA1CCTL1 |= OUTMOD_7; // activation mode de sortie n°7
+
+  TA1CCR0 = 8191; // determine la periode du signal
+  TA1CCR2 = 8000; // determine le rapport cyclique du signal
+  TA1CCR1 = 8000; // determine le rapport cyclique du signal
+
+  while (1){
+
+  };
 }
