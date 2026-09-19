@@ -50,7 +50,7 @@ void init_moteur(){
   TA1CCTL2 |= OUTMOD_7; // activation mode de sortie n°7
   TA1CCTL1 |= OUTMOD_7; // activation mode de sortie n°7
 
-  TA1CCR0 = 992; // determine la periode du signal
+  TA1CCR0 = FREQ_MOT; // determine la periode du signal
   TA1CCR2 = 0; // determine le rapport cyclique du signal
   TA1CCR1 = 0; // determine le rapport cyclique du signal
 
