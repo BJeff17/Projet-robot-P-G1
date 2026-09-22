@@ -92,6 +92,20 @@ void pilotage_moteur(int sens_g, int puissance_g, int sens_d, int puissance_d){
   TA1CCR2 = (FREQ_MOT*(puissance_d - correction_rg))/100; // determine le rapport cyclique du signal
   TA1CCR1 = (FREQ_MOT*(puissance_g - correction_rd))/100; // determine le rapport cyclique du signal
 }
+void distance(float target_distance){ //distance en cm
+  float actual_distance =  0;
+  
+  if (capt_opto_g > capt_opto_g){
+    actual_distance =13.5*((float)(capt_opto_g) /24.0);//1 tic = 0.5 cm
+  }else{
+    actual_distance =13.5*((float)(capt_opto_g) /24.0);//1 tic = 0.5 cm
+  } 
+
+  if(actual_distance >= target_distance ){
+    pilotage_moteur(0,0,0,0);
+  }
+}
+
 int main(void) {
   volatile unsigned int i;
   WDTCTL = WDTPW + WDTHOLD; // Stop watchdog timer
@@ -107,8 +121,10 @@ int main(void) {
   TA1CCTL0 |= CAP | CCIE; // mode capture + autorisation interruption
 
   init_moteur();
-  pilotage_moteur(1,60,0,60);
+  pilotage_moteur(1,80,0,80);
 
   __enable_interrupt();
-  while (1);
+  while (1) {
+    distance(130.0);
+  }
 }
