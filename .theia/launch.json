@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Projet_Robot_1",
+            "type": "ccs-debug",
+            "request": "launch",
+            "projectInfo": {
+                "name": "Projet_Robot_1",
+                "resourceId": "/Projet_Robot_1"
+            }
+        }
+    ]
+}
