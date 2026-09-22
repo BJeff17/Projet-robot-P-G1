@@ -27,6 +27,19 @@ __interrupt void capture_opto(void)
   }
 
 }
+void distance(float target_distance){ //distance en cm
+  float actual_distance =  0;
+  
+  if (capt_opto_d > capt_opto_g){
+    actual_distance = capt_opto_d * 0.5;//1 tic = 0.5 cm
+  }else{
+    actual_distance = capt_opto_g * 0.5;//1 tic = 0.5 cm
+  } 
+
+  if(actual_distance >= target_distance ){
+    pilotage_moteur(1,0,0,0);//Vitesse des moteurs à 0 
+  }
+}
 
 void init_moteur(){
 
