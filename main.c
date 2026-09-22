@@ -7,7 +7,7 @@
 volatile unsigned int capt_opto_g = 0;
 volatile unsigned int capt_opto_d = 0;
 
-#pragma vector=TIMER0_A1_VECTOR
+#pragma vector=TIMER1_A0_VECTOR
 __interrupt void capture_opto(void)
 { 
   if((P2IN & BIT0)== BIT0){
