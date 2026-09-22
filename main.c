@@ -1,16 +1,32 @@
-
-
+#include "ADC.h"
+#include "Afficheur.h"
 #include <msp430.h>
 
 #define FREQ_MOT (992)
+// #define NB_ORI (4)
+#define NB_OBST (2)
+#define NB_ETAT (2)
 
 volatile unsigned int capt_opto_g = 0;
 volatile unsigned int capt_opto_d = 0;
 volatile int diff_capt = 0 ;
+static int valeur_capt = 0;
 
 
 #define correction_rg (0)
 #define correction_rd (0)
+
+// typedef enum {ORI_DROITE, ORI_HAUT, ORI_GAUCHE, ORI_BAS} ORI_ROBOT;    //orientation robot
+typedef enum {CAPT_OFF, CAPT_ON} CAPT_OBST; //capteur d'obstacle
+typedef enum {ETAT_AVANCER, ETAT_TOURNER} ETAT;
+typedef void (*Action)(void);  
+
+typedef struct {
+Etat etat_suivant
+Action action;
+} Transition;
+
+
 
 #pragma vector=PORT2_VECTOR
 __interrupt void capture_opto(void)
@@ -25,8 +41,12 @@ __interrupt void capture_opto(void)
       P2IES ^= (BIT3); 
     P2IFG &= ~BIT3;
   }
+  // lecture_capteur_obstacle();
 
 }
+void action_tourner(void) { /*TOURNER*/  }
+void action_avancer(void) { pilotage_moteur(1,60,0,60); }
+
 void distance(float target_distance){ //distance en cm
   float actual_distance =  0;
   
@@ -52,6 +72,11 @@ void init_moteur(){
   P2DIR &= ~BIT3; // P2.3 en entrée
   P2SEL &= ~BIT3; // selection fonction TA1.2
   P2SEL2 &= ~BIT3; // selection fonction TA1.
+
+    // capteur infrarouge
+  P1DIR &= ~BIT1; // P1.7 en entrée
+  P1SEL &= ~BIT1; // selection fonction TA1.2
+  P1SEL2 &= ~BIT1; // selection fonction TA1.
   
   P2IE |= (BIT0 | BIT3); 
   P2IES |= (BIT0 | BIT3); 
@@ -79,12 +104,45 @@ void init_moteur(){
   TA1CCR2 = 0; // determine le rapport cyclique du signal
   TA1CCR1 = 0; // determine le rapport cyclique du signal
 
+  P1DIR |= (BIT0 | BIT6); // P2.5 et P2. en sortie
+
+
   P2OUT |= (BIT5);// sens
   P2OUT &= ~(BIT1);// sens
     P2IFG &= ~BIT0;
     P2IFG &= ~BIT3;
 
 }
+
+void lecture_capteur_obstacle()
+{
+    
+    ADC_Demarrer_conversion(1);
+    valeur_capt = ADC_Lire_resultat();
+    Aff_valeur(convert_Hex_Dec(valeur_capt));
+
+}
+
+void obstacle_capteur(){
+  if (valeur_capt >= 600) {
+    pilotage_moteur(1,0,0,0);
+  }
+  else {
+    pilotage_moteur(1,60,0,60);
+  }
+}
+
+Transition table_transition[NB_ETAT][NB_OBST] = {
+        [ETAT_AVANCER] = {
+            [CAPT_ON] = {ETAT_TOURNER, action_tourner},
+            [CAPT_OFF] = {ETAT_AVANCER, action_avancer}
+        },
+        [ETAT_TOURNER] = {
+            [CAPT_ON] = {ETAT_TOURNER, action_tourner},
+            [CAPT_OFF] = {ETAT_AVANCER, action_avancer}
+        }
+};
+
 
 void pilotage_moteur(int sens_g, int puissance_g, int sens_d, int puissance_d){
   if (sens_g == 1 ){
@@ -105,9 +163,14 @@ void pilotage_moteur(int sens_g, int puissance_g, int sens_d, int puissance_d){
   TA1CCR2 = (FREQ_MOT*(puissance_d - correction_rg))/100; // determine le rapport cyclique du signal
   TA1CCR1 = (FREQ_MOT*(puissance_g - correction_rd))/100; // determine le rapport cyclique du signal
 }
+
 int main(void) {
   volatile unsigned int i;
+
   WDTCTL = WDTPW + WDTHOLD; // Stop watchdog timer
+  CAPT_OBST capt= CAPT_OFF;
+  ETAT etat = ETAT_AVANCER;
+  Transition trs;
 
   BCSCTL1= CALBC1_1MHZ; //frequence d’horloge 1MHz
   DCOCTL= CALDCO_1MHZ; // "
@@ -121,7 +184,15 @@ int main(void) {
 
   init_moteur();
   pilotage_moteur(1,60,0,60);
+  ADC_init();
+  Aff_Init();
 
   __enable_interrupt();
-  while (1);
+  while (1){
+    lecture_capteur_obstacle();
+    obstacle_capteur();
+    trs = table_transition[etat][capt];
+    trs.action();
+    etat = trs.etat_suivant;
+  }
 }
