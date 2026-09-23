@@ -3,7 +3,6 @@
 #include <msp430.h>
 
 #define FREQ_MOT (992)
-// #define NB_ORI (4)
 #define NB_OBST (2)
 #define NB_ETAT (2)
 
@@ -13,17 +12,17 @@ volatile int diff_capt = 0 ;
 static int valeur_capt = 0;
 
 
+
 #define correction_rg (0)
 #define correction_rd (0)
 
-// typedef enum {ORI_DROITE, ORI_HAUT, ORI_GAUCHE, ORI_BAS} ORI_ROBOT;    //orientation robot
 typedef enum {CAPT_OFF, CAPT_ON} CAPT_OBST; //capteur d'obstacle
 typedef enum {ETAT_AVANCER, ETAT_TOURNER} ETAT;
 typedef void (*Action)(void);  
 
 typedef struct {
-Etat etat_suivant
-Action action;
+Etat etat_suivant;
+CAPT_OBST capt;
 } Transition;
 
 
@@ -41,24 +40,29 @@ __interrupt void capture_opto(void)
       P2IES ^= (BIT3); 
     P2IFG &= ~BIT3;
   }
-  // lecture_capteur_obstacle();
 
 }
+
 void action_tourner(void) { /*TOURNER*/  }
 void action_avancer(void) { pilotage_moteur(1,60,0,60); }
 
-void distance(float target_distance){ //distance en cm
-  float actual_distance =  0;
+void distance(int target_distance){ //fonction qui arrete le robot après une certaine distance en cm passée en paramètre 
+  int actual_distance =  0;
   
-  if (capt_opto_d > capt_opto_g){
-    actual_distance = capt_opto_d * 0.5;//1 tic = 0.5 cm
+  if (capt_opto_d > capt_opto_g){ // On prend l'opto avec la plus grande valeur 
+    actual_distance = capt_opto_d/12;//1 tic = 0.5 cm
   }else{
-    actual_distance = capt_opto_g * 0.5;//1 tic = 0.5 cm
+    actual_distance = capt_opto_g /12;//1 tic = 0.5 cm
   } 
 
-  if(actual_distance >= target_distance ){
-    pilotage_moteur(1,0,0,0);//Vitesse des moteurs à 0 
+  if(actual_distance >= target_distance ){// Si la distance cible est atteinte alors on coupe les moteurs
+    arret_moteur();
   }
+}
+
+void arret_moteur(void){ 
+    pilotage_moteur(0,0,0,0);
+    TA0CTL &= ~TAIE;
 }
 
 void init_moteur(){
@@ -114,32 +118,32 @@ void init_moteur(){
 
 }
 
-void lecture_capteur_obstacle()
+void lecture_capteur_obstacle() // Lecture de la valeur du capteur infrarouge 
 {
-    
     ADC_Demarrer_conversion(1);
     valeur_capt = ADC_Lire_resultat();
-    Aff_valeur(convert_Hex_Dec(valeur_capt));
-
+    Aff_valeur(convert_Hex_Dec(valeur_capt)); // Affichage de la valeur sur l'afficheur 
 }
 
-void obstacle_capteur(){
+void obstacle_capteur(CAPT_OBST *capt){ // Le robot s'arrete s'il rencontre un obstacle à X cm 
   if (valeur_capt >= 600) {
-    pilotage_moteur(1,0,0,0);
+    arret_moteur();
+    *capt = CAPT_ON;
   }
   else {
-    pilotage_moteur(1,60,0,60);
+    *capt = CAPT_OFF;
+    // pilotage_moteur(1,60,0,60); -> Pas obligé si machine d'état ? 
   }
 }
 
 Transition table_transition[NB_ETAT][NB_OBST] = {
         [ETAT_AVANCER] = {
-            [CAPT_ON] = {ETAT_TOURNER, action_tourner},
-            [CAPT_OFF] = {ETAT_AVANCER, action_avancer}
+            [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Si obstacle alors le robot tourne 
+            [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
         },
         [ETAT_TOURNER] = {
-            [CAPT_ON] = {ETAT_TOURNER, action_tourner},
-            [CAPT_OFF] = {ETAT_AVANCER, action_avancer}
+            [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Obstacle alors le robot tourne à nouveau
+            [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
         }
 };
 
@@ -169,7 +173,7 @@ int main(void) {
 
   WDTCTL = WDTPW + WDTHOLD; // Stop watchdog timer
   CAPT_OBST capt= CAPT_OFF;
-  ETAT etat = ETAT_AVANCER;
+  ETAT etat = ETAT_AVANCER; //initialisation de l'état
   Transition trs;
 
   BCSCTL1= CALBC1_1MHZ; //frequence d’horloge 1MHz
@@ -189,8 +193,9 @@ int main(void) {
 
   __enable_interrupt();
   while (1){
-    lecture_capteur_obstacle();
-    obstacle_capteur();
+    distance(100);
+    lecture_capteur_obstacle(); //Lecture de la valeur 
+    obstacle_capteur(&capt); //s'arrete si un obstacle est detecté 
     trs = table_transition[etat][capt];
     trs.action();
     etat = trs.etat_suivant;
