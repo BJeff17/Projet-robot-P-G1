@@ -1,26 +1,33 @@
 
-
+#include "ADC.h"
+#include "Afficheur.h"
 #include <msp430.h>
 
-//#define ROBOT_FAST
-#define ROBOT_SLOW
+#define ROBOT_FAST
+//#define ROBOT_SLOW
 
 #if defined(ROBOT_FAST)
   #define FREQ_MOT     (992)
-  #define BASE_SPEED   (90)
+  #define BASE_SPEED   (30)
   #define GAIN         (2)
   #define CORR_MAX     (15)
   #define OPTO_D_OK    (0)   // capteur droit mort
-  #define CORR_STATIC_G       (0)  
-  #define CORR_STATIC_D       (-6)  
-#elif defined(ROBOT_SLOW)
-  #define FREQ_MOT     (992)
-  #define BASE_SPEED   (85)
-  #define GAIN         (1)
-  #define CORR_MAX     (15)
-  #define OPTO_D_OK    (1)
-  #define CORR_STATIC_G       (0)
+  #define CORR_STATIC_G       (2)
   #define CORR_STATIC_D       (0)
+  #define NB_OBST (2)
+  #define NB_ETAT (3)
+  #define NB_MODE (2) 
+#elif defined(ROBOT_SLOW)
+  #define FREQ_MOT (992)
+  #define BASE_SPEED (80)
+  #define GAIN (1)
+  #define CORR_MAX (15)
+  #define OPTO_D_OK (0)
+  #define CORR_STATIC_G (0)
+  #define CORR_STATIC_D (0)
+  #define NB_OBST (2)
+  #define NB_ETAT (3)
+  #define NB_MODE (2)
 #else
   #error "ROBOT_FAST ou ROBOT_SLOW seulement"
 #endif
@@ -31,6 +38,32 @@ volatile int diff_capt = 0 ;
 
 volatile int correction = 0;
 volatile unsigned char flag_correction = 0;
+volatile unsigned char correction_active = 1;
+static int valeur_capt = 0;
+
+/* Temps */
+volatile unsigned int compteur_ms = 0;
+volatile unsigned int secondes = 0;
+
+
+typedef enum {CAPT_OFF, CAPT_ON} CAPT_OBST; //capteur d'obstacle
+typedef enum {ETAT_AVANCER, ETAT_TOURNER, ETAT_ARRET} ETAT;
+typedef enum {MODE_HOMOL, MODE_DANSE} MODE;
+typedef void (*Action)(void);  
+
+CAPT_OBST capt= CAPT_OFF;
+ETAT etat = ETAT_AVANCER; //initialisation de l'état
+MODE mode = MODE_HOMOL;
+
+typedef struct {
+    ETAT etat_suivant;
+    Action action;
+} Transition; 
+
+void action_tourner(void) { /*TOURNER*/  }
+void action_avancer(void) { correction_active = 1; pilotage_moteur(1, BASE_SPEED - CORR_STATIC_G, 0, BASE_SPEED - CORR_STATIC_D);; }
+void action_arret(void)   { arret_moteur();}
+
 
 #pragma vector=PORT2_VECTOR
 __interrupt void capture_opto(void)
@@ -45,15 +78,35 @@ __interrupt void capture_opto(void)
       P2IES ^= (BIT3); 
     P2IFG &= ~BIT3;
   }
-
 }
 
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timer_correction(void)
-{
+{ 
+  lecture_capteur_obstacle();
+  capt = obstacle_capteur();
+  if (capt == CAPT_OFF){
+    compteur_ms+= 100;
+  }
+  else{
+    arret_moteur();
+  }
+  if (compteur_ms == 1000) {
+    secondes++;
+    compteur_ms = 0;
+  }
   flag_correction = 1 ;
+  
+}
+void affiche_second(){
+  Aff_valeur(convert_Hex_Dec(secondes));
 }
 
+void arret_moteur(void){
+    correction_active = 0;
+    TA1CCR2 = 0;
+    TA1CCR1 = 0;
+}
 
 void init_moteur(){
 
@@ -74,6 +127,14 @@ void init_moteur(){
   P2IE |= BIT0;// capteur opto mort
   P2IES |= BIT0;          
 #endif
+
+  // capteur infrarouge
+  P1DIR &= ~BIT1; // P1.7 en entrée
+  P1SEL &= ~BIT1; // selection fonction TA1.2
+  P1SEL2 &= ~BIT1; // selection fonction TA1.
+  
+  P2IE |= (BIT0 | BIT3); 
+  P2IES |= (BIT0 | BIT3); 
 
   //config sens gauche et droit 
   P2DIR |= (BIT1 | BIT5); // P2.5 et P2.1 en sortie
@@ -164,9 +225,59 @@ void distance(float target_distance){ //distance en cm
   }
 }
 
+void lecture_capteur_obstacle() // Lecture de la valeur du capteur infrarouge 
+{
+    {
+    ADC_Demarrer_conversion(1);
+
+    valeur_capt = ADC_Lire_resultat();
+    }
+}
+/* DETERMINER ETAT CAPTEUR */
+CAPT_OBST obstacle_capteur(void)
+{
+  if (valeur_capt >= 500 && valeur_capt <= 900 )
+  {
+  return CAPT_ON;
+  }
+  else
+  {
+  return CAPT_OFF;
+  }
+}
+
+
+Transition table_transition[NB_MODE][NB_ETAT][NB_OBST]= {
+    [MODE_HOMOL] = {
+        [ETAT_AVANCER] = {
+        [CAPT_ON] = {ETAT_ARRET, action_arret}, // Si obstacle alors le robot tourne 
+        [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
+      },
+      [ETAT_ARRET] = {
+        [CAPT_ON] = {ETAT_ARRET, action_arret}, // Obstacle alors le robot tourne à nouveau
+        [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
+      }
+    },
+    [MODE_DANSE] = {
+        [ETAT_AVANCER] = {
+        [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Si obstacle alors le robot tourne 
+        [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
+      },
+      [ETAT_TOURNER] = {
+        [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Obstacle alors le robot tourne à nouveau
+        [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
+      }
+    }     
+};
 int main(void) {
   volatile unsigned int i;
-  WDTCTL = WDTPW + WDTHOLD; 
+  
+  WDTCTL = WDTPW + WDTHOLD; // Stop watchdog timer
+  
+  CAPT_OBST capt= CAPT_OFF;
+  ETAT etat = ETAT_AVANCER; //initialisation de l'état
+  MODE mode = MODE_HOMOL;
+  Transition trs;
 
   BCSCTL1= CALBC1_1MHZ; 
   DCOCTL= CALDCO_1MHZ; 
@@ -178,18 +289,54 @@ int main(void) {
   TA1CCTL0 |= CM_0 | CCIS_0; // front montant + CCI0A
   TA1CCTL0 |= CAP | CCIE; // mode capture + autorisation interruption
 
+  /* Allumage des phares */
+  unsigned int lum_hex = 0;
+  P1SEL &= ~(BIT0 | BIT6);
+  P1SEL2 &= ~(BIT0 | BIT6);
+
+  P1DIR |= (BIT0 |BIT6);
+
+  P1OUT &= ~(BIT0);
+  P1OUT &= ~(BIT6);
+
   config_timer_correction(TASSEL_2, ID_1, MC_1, 49999);
   TA0CCTL0 = CCIE;         
+
+  ADC_init();
+  Aff_Init();
   
   init_moteur();
-  pilotage_moteur(1, BASE_SPEED + CORR_STATIC_G, 0, BASE_SPEED + CORR_STATIC_D);
+  pilotage_moteur(1, BASE_SPEED - CORR_STATIC_G, 0, BASE_SPEED - CORR_STATIC_D);
 
   __enable_interrupt();
   while (1) {
-    if(flag_correction = 1){
+
+    // correction avance ligne droite
+    if(flag_correction){
       flag_correction = 0;
-      corriger_trajectoire(); 
+      if(correction_active){
+         corriger_trajectoire();
+      }
     }
+    // commande 
+    if(capt == CAPT_ON){
     distance(130.0);
+    }
+    //machine d'etat
+    lecture_capteur_obstacle();
+    capt = obstacle_capteur();
+    trs = table_transition[mode][etat][capt];
+    trs.action();
+    etat = trs.etat_suivant;
+
+    // led en fonction de la luminosité
+    ADC_Demarrer_conversion(2);
+    lum_hex = ADC_Lire_resultat(); 
+    if (lum_hex <= 600) {
+      P1OUT |= (BIT0 | BIT6);
+    }else {
+      P1OUT &= ~(BIT0 | BIT6);
+    }
+    affiche_second();
   }
 }

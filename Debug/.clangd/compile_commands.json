@@ -3,5 +3,15 @@
       "directory" : "C:/Users/comeo/ti/Projet-robot-P-G1/Debug",
       "command"   : "clang++ -I\"C:/ti/ccs2101/ccs/ccs_base/msp430/include\" -I\"C:/Users/comeo/ti/Projet-robot-P-G1\" -I\"C:/ti/ccs2101/ccs/tools/compiler/ti-cgt-msp430_21.6.3.LTS/include\" -D__MSP430G2553__ -xc",
       "file"      : "C:/Users/comeo/ti/Projet-robot-P-G1/main.c"
+   },
+   {
+      "directory" : "C:/Users/comeo/ti/Projet-robot-P-G1/Debug",
+      "command"   : "clang++ -I\"C:/ti/ccs2101/ccs/ccs_base/msp430/include\" -I\"C:/Users/comeo/ti/Projet-robot-P-G1\" -I\"C:/ti/ccs2101/ccs/tools/compiler/ti-cgt-msp430_21.6.3.LTS/include\" -D__MSP430G2553__ -xc",
+      "file"      : "C:/Users/comeo/ti/Projet-robot-P-G1/ADC.c"
+   },
+   {
+      "directory" : "C:/Users/comeo/ti/Projet-robot-P-G1/Debug",
+      "command"   : "clang++ -I\"C:/ti/ccs2101/ccs/ccs_base/msp430/include\" -I\"C:/Users/comeo/ti/Projet-robot-P-G1\" -I\"C:/ti/ccs2101/ccs/tools/compiler/ti-cgt-msp430_21.6.3.LTS/include\" -D__MSP430G2553__ -xc",
+      "file"      : "C:/Users/comeo/ti/Projet-robot-P-G1/Afficheur.c"
    }
 ]
