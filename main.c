@@ -4,7 +4,8 @@
 
 #define FREQ_MOT (992)
 #define NB_OBST (2)
-#define NB_ETAT (2)
+#define NB_ETAT (3)
+#define NB_MODE (2)
 
 volatile unsigned int capt_opto_g = 0;
 volatile unsigned int capt_opto_d = 0;
@@ -17,12 +18,14 @@ static int valeur_capt = 0;
 #define correction_rd (0)
 
 typedef enum {CAPT_OFF, CAPT_ON} CAPT_OBST; //capteur d'obstacle
-typedef enum {ETAT_AVANCER, ETAT_TOURNER} ETAT;
+typedef enum {ETAT_AVANCER, ETAT_TOURNER, ETAT_ARRET} ETAT;
+typedef enum {MODE_HOMOL, MODE_DANSE} MODE;
 typedef void (*Action)(void);  
 
 typedef struct {
 Etat etat_suivant;
 CAPT_OBST capt;
+MODE mode;
 } Transition;
 
 
@@ -45,6 +48,7 @@ __interrupt void capture_opto(void)
 
 void action_tourner(void) { /*TOURNER*/  }
 void action_avancer(void) { pilotage_moteur(1,60,0,60); }
+void action_arret(void)   { arret_moteur();}
 
 void distance(int target_distance){ //fonction qui arrete le robot après une certaine distance en cm passée en paramètre 
   int actual_distance =  0;
@@ -136,15 +140,28 @@ void obstacle_capteur(CAPT_OBST *capt){ // Le robot s'arrete s'il rencontre un o
   }
 }
 
-Transition table_transition[NB_ETAT][NB_OBST] = {
-        [ETAT_AVANCER] = {
+Transition table_transition[NB_MODE][NB_ETAT][NB_OBST]= {
+        [MODE_HOMOL] = {
+           [ETAT_AVANCER] = {
+            [CAPT_ON] = {ETAT_ARRET, action_arret}, // Si obstacle alors le robot tourne 
+            [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
+          },
+          [ETAT_ARRET] = {
+            [CAPT_ON] = {ETAT_ARRET, action_arret}, // Obstacle alors le robot tourne à nouveau
+            [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
+          }
+        },
+        [MODE_DANSE] = {
+           [ETAT_AVANCER] = {
             [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Si obstacle alors le robot tourne 
             [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
-        },
-        [ETAT_TOURNER] = {
+          },
+          [ETAT_TOURNER] = {
             [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Obstacle alors le robot tourne à nouveau
             [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
+          }
         }
+       
 };
 
 
