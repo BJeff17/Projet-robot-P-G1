@@ -3,20 +3,19 @@
 #include "Afficheur.h"
 #include <msp430.h>
 
-#define ROBOT_FAST
-//#define ROBOT_SLOW
+//#define ROBOT_FAST
+#define ROBOT_SLOW
 
 #if defined(ROBOT_FAST)
-  #define FREQ_MOT     (992)
-  #define BASE_SPEED   (30)
-  #define GAIN         (2)
-  #define CORR_MAX     (15)
-  #define OPTO_D_OK    (0)   // capteur droit mort
-  #define CORR_STATIC_G       (2)
-  #define CORR_STATIC_D       (0)
-  #define NB_OBST (2)
-  #define NB_ETAT (3)
-  #define NB_MODE (2) 
+  #define FREQ_MOT (992)
+  #define BASE_SPEED (30)
+  #define GAIN (2)
+  #define CORR_MAX (15)
+  #define OPTO_D_OK (0)   // capteur droit mort
+  #define CORR_STATIC_G (3)
+  #define CORR_STATIC_D (0)
+  #define DISTANCE (130)
+  #define DIST_CAPT_INFRA (485)
 #elif defined(ROBOT_SLOW)
   #define FREQ_MOT (992)
   #define BASE_SPEED (80)
@@ -24,10 +23,9 @@
   #define CORR_MAX (15)
   #define OPTO_D_OK (0)
   #define CORR_STATIC_G (0)
-  #define CORR_STATIC_D (0)
-  #define NB_OBST (2)
-  #define NB_ETAT (3)
-  #define NB_MODE (2)
+  #define CORR_STATIC_D (1)
+  #define DISTANCE (130)
+  #define DIST_CAPT_INFRA (485)
 #else
   #error "ROBOT_FAST ou ROBOT_SLOW seulement"
 #endif
@@ -46,9 +44,9 @@ volatile unsigned int compteur_ms = 0;
 volatile unsigned int secondes = 0;
 
 
-typedef enum {CAPT_OFF, CAPT_ON} CAPT_OBST; //capteur d'obstacle
-typedef enum {ETAT_AVANCER, ETAT_TOURNER, ETAT_ARRET} ETAT;
-typedef enum {MODE_HOMOL, MODE_DANSE} MODE;
+typedef enum {CAPT_OFF, CAPT_ON, DIST_MAX, NB_OBST} CAPT_OBST; //capteur d'obstacle
+typedef enum {ETAT_AVANCER, ETAT_TOURNER, ETAT_ARRET, NB_ETAT} ETAT;
+typedef enum {MODE_HOMOL, MODE_DANSE,NB_MODE} MODE;
 typedef void (*Action)(void);  
 
 CAPT_OBST capt= CAPT_OFF;
@@ -83,9 +81,11 @@ __interrupt void capture_opto(void)
 #pragma vector=TIMER0_A0_VECTOR
 __interrupt void timer_correction(void)
 { 
-  lecture_capteur_obstacle();
-  capt = obstacle_capteur();
-  if (capt == CAPT_OFF){
+  if(capt != DIST_MAX){
+    lecture_capteur_obstacle();
+    capt = obstacle_capteur();
+  }
+  if (capt == CAPT_OFF || capt == DIST_MAX){
     compteur_ms+= 100;
   }
   else{
@@ -214,14 +214,17 @@ void corriger_trajectoire(void){
 }
 void distance(float target_distance){ //distance en cm
   float actual_distance =  0;
-  
+#if OPTO_D_OK
   if (capt_opto_d > capt_opto_g){
-    actual_distance =13.5*((float)(capt_opto_d) /24.0);//1 tic = 0.5 cm
-  }else{
-    actual_distance =13.5*((float)(capt_opto_g) /24.0);//1 tic = 0.5 cm
-  } 
+    actual_distance =13.4*((float)(capt_opto_d) /24.0);//1 tic = 0.5 cm
+  }{
+    actual_distance =13.4*((float)(capt_opto_g) /24.0);//1 tic = 0.5 cm
+  }
+#else
+  actual_distance =13.5*((float)(capt_opto_g) /24.0);//1 tic = 0.5 cm
+#endif
   if(actual_distance >= target_distance ){
-    pilotage_moteur(0,0,0,0);
+     capt = DIST_MAX;
   }
 }
 
@@ -236,34 +239,51 @@ void lecture_capteur_obstacle() // Lecture de la valeur du capteur infrarouge
 /* DETERMINER ETAT CAPTEUR */
 CAPT_OBST obstacle_capteur(void)
 {
-  if (valeur_capt >= 500 && valeur_capt <= 900 )
+  if (valeur_capt >= 485) //&& valeur_capt <= 900 )
   {
-  return CAPT_ON;
+    if(capt != DIST_MAX) return CAPT_ON;
+    else return DIST_MAX;
   }
   else
   {
-  return CAPT_OFF;
+    if(capt != DIST_MAX) return CAPT_OFF;
+    else return DIST_MAX;
   }
 }
 
-
+void phare_robot(){
+    // led en fonction de la luminosité
+    ADC_Demarrer_conversion(2);
+    int lum_hex = ADC_Lire_resultat(); 
+    if (lum_hex <= 600) {
+      P1OUT |= (BIT0 | BIT6);
+    }else {
+      P1OUT &= ~(BIT0 | BIT6);
+    }
+}
 Transition table_transition[NB_MODE][NB_ETAT][NB_OBST]= {
     [MODE_HOMOL] = {
         [ETAT_AVANCER] = {
+        [DIST_MAX] = {ETAT_ARRET, action_arret}, // Si la distance max est atteinte arrêt
         [CAPT_ON] = {ETAT_ARRET, action_arret}, // Si obstacle alors le robot tourne 
         [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
+        
       },
       [ETAT_ARRET] = {
+        [DIST_MAX] = {ETAT_ARRET, action_arret}, // Si la distance max est atteinte arrêt 
         [CAPT_ON] = {ETAT_ARRET, action_arret}, // Obstacle alors le robot tourne à nouveau
-        [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
+        [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer
       }
     },
     [MODE_DANSE] = {
         [ETAT_AVANCER] = {
+        [DIST_MAX] = {ETAT_ARRET, action_arret}, // Si la distance max est atteinte arrêt 
         [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Si obstacle alors le robot tourne 
         [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
+
       },
       [ETAT_TOURNER] = {
+        [DIST_MAX] = {ETAT_ARRET, action_arret}, // Si la distance max est atteinte arrêt 
         [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Obstacle alors le robot tourne à nouveau
         [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Pas d'obstacle alors il peut avancer 
       }
@@ -319,24 +339,15 @@ int main(void) {
       }
     }
     // commande 
-    if(capt == CAPT_ON){
-    distance(130.0);
-    }
     //machine d'etat
     lecture_capteur_obstacle();
     capt = obstacle_capteur();
+    distance(130.0);
     trs = table_transition[mode][etat][capt];
     trs.action();
     etat = trs.etat_suivant;
 
-    // led en fonction de la luminosité
-    ADC_Demarrer_conversion(2);
-    lum_hex = ADC_Lire_resultat(); 
-    if (lum_hex <= 600) {
-      P1OUT |= (BIT0 | BIT6);
-    }else {
-      P1OUT &= ~(BIT0 | BIT6);
-    }
+    phare_robot();
     affiche_second();
   }
 }
