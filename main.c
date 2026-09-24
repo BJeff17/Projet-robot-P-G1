@@ -185,6 +185,15 @@ void pilotage_moteur(int sens_g, int puissance_g, int sens_d, int puissance_d){
   TA1CCR1 = (FREQ_MOT*(puissance_g - correction_rd))/100; // determine le rapport cyclique du signal
 }
 
+void twerk(){
+  for (int i = 0; i< 20; i++) {
+    tourner(10,puissance_d);
+    __delay_cycles(500);
+    tourner(-10,puissance_g);
+    __delay_cycles(500);
+  }
+}
+
 int main(void) {
   volatile unsigned int i;
 
