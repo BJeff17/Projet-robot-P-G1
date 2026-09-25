@@ -12,24 +12,27 @@
   #define GAIN (2)
   #define CORR_MAX (15)
   #define OPTO_D_OK (0)   // capteur droit mort
-  #define CORR_STATIC_G (3)
-  #define CORR_STATIC_D (0)
+  // #define CORR_STATIC_G (3)
+  // #define CORR_STATIC_D (0)
   #define DISTANCE (130)
   #define DIST_CAPT_INFRA (485)
+  #define CAPT_INFRA_OK (1)
 #elif defined(ROBOT_SLOW)
   #define FREQ_MOT (992)
   #define BASE_SPEED (80)
-  #define GAIN (1)
+  #define GAIN (2)
   #define CORR_MAX (15)
   #define OPTO_D_OK (0)
-  #define CORR_STATIC_G (0)
-  #define CORR_STATIC_D (1)
+  // #define CORR_STATIC_G (0)
+  // #define CORR_STATIC_D (0)
   #define DISTANCE (130)
   #define DIST_CAPT_INFRA (485)
+  #define CAPT_INFRA_OK (1)
 #else
   #error "ROBOT_FAST ou ROBOT_SLOW seulement"
 #endif
-
+int CORR_STATIC_G = 0;
+int CORR_STATIC_D = 0;
 volatile unsigned int capt_opto_g = 0;
 volatile unsigned int capt_opto_d = 0;
 volatile int diff_capt = 0 ;
@@ -59,7 +62,7 @@ typedef struct {
 } Transition; 
 
 void action_tourner(void) { /*TOURNER*/  }
-void action_avancer(void) { correction_active = 1; pilotage_moteur(1, BASE_SPEED - CORR_STATIC_G, 0, BASE_SPEED - CORR_STATIC_D);; }
+void action_avancer(void) { correction_active = 1; pilotage_moteur(1, BASE_SPEED - correction - CORR_STATIC_G, 0, BASE_SPEED + correction - CORR_STATIC_D); }
 void action_arret(void)   { arret_moteur();}
 
 
@@ -94,6 +97,12 @@ __interrupt void timer_correction(void)
   if (compteur_ms == 1000) {
     secondes++;
     compteur_ms = 0;
+  }
+  if (secondes == 3 && secondes == 4){
+    CORR_STATIC_D = 1;
+  }
+  else{
+    CORR_STATIC_D = 0;
   }
   flag_correction = 1 ;
   
@@ -203,9 +212,6 @@ void corriger_trajectoire(void){
   int erreur = dg - dd; 
   correction += erreur * GAIN;
 
-  if (capt_opto_d == 220){
-    correction = correction;
-  }
   if(correction > CORR_MAX)  correction = CORR_MAX;
   if(correction < -CORR_MAX) correction = -CORR_MAX;
 #endif
@@ -239,15 +245,20 @@ void lecture_capteur_obstacle() // Lecture de la valeur du capteur infrarouge
 /* DETERMINER ETAT CAPTEUR */
 CAPT_OBST obstacle_capteur(void)
 {
-  if (valeur_capt >= 485) //&& valeur_capt <= 900 )
-  {
-    if(capt != DIST_MAX) return CAPT_ON;
-    else return DIST_MAX;
+  if(CAPT_INFRA_OK){
+    if (valeur_capt >= 485) //&& valeur_capt <= 900 )
+    {
+      if(capt != DIST_MAX) return CAPT_ON;
+      else return DIST_MAX;
+    }
+    else
+    {
+      if(capt != DIST_MAX) return CAPT_OFF;
+      else return DIST_MAX;
+    }
   }
-  else
-  {
+  else{
     if(capt != DIST_MAX) return CAPT_OFF;
-    else return DIST_MAX;
   }
 }
 
@@ -276,7 +287,7 @@ Transition table_transition[NB_MODE][NB_ETAT][NB_OBST]= {
       }
     },
     [MODE_DANSE] = {
-        [ETAT_AVANCER] = {
+      [ETAT_AVANCER] = {
         [DIST_MAX] = {ETAT_ARRET, action_arret}, // Si la distance max est atteinte arrêt 
         [CAPT_ON] = {ETAT_TOURNER, action_tourner}, // Si obstacle alors le robot tourne 
         [CAPT_OFF] = {ETAT_AVANCER, action_avancer} // Sinon il continue d'avancer 
